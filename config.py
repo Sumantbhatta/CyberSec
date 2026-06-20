@@ -16,6 +16,7 @@ RISK_WEIGHTS = {
     "UnusedPermissions": 30,
 }
 
+
 RISK_MULTIPLIERS = {
     "admin": 1.5,
     "pii_access": 1.4,
