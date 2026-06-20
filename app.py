@@ -15,7 +15,6 @@ from api.routes import api_bp, init_state
 
 def create_app():
     app = Flask(__name__)
-
     # Generate and process data
     print("[*] Generating synthetic identity data (250+ identities)...")
     raw_data = generate_identities()
