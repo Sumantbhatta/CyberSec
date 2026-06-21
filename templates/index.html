@@ -4,7 +4,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Identity Sprawl Detector: real-time cross-platform identity risk detection across Active Directory, AWS IAM, and Okta.">
+    <meta name="description"
+        content="Identity Sprawl Detector: real-time cross-platform identity risk detection across Active Directory, AWS IAM, and Okta.">
     <title>Identity Sprawl Detector | SG Cybersecurity</title>
     <link rel="icon" href="/static/favicon.ico" type="image/x-icon">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -19,7 +20,7 @@
             <span class="navbar-brand mb-0 h4">
                 <span class="text-danger">&#9632;</span> Identity Sprawl Detector
             </span>
-            <span class="badge bg-secondary ms-2">Societe Generale</span>
+            <span class="badge bg-secondary ms-2"></span>
         </div>
         <div class="d-flex align-items-center gap-3">
             <div id="header-stats" class="d-flex gap-3"></div>
@@ -105,7 +106,8 @@
                                 <option value="medium">Medium</option>
                                 <option value="low">Low</option>
                             </select>
-                            <a href="/api/export/csv" class="btn btn-sm btn-outline-success" download title="Download full risk register as CSV (pandas-powered)">
+                            <a href="/api/export/csv" class="btn btn-sm btn-outline-success" download
+                                title="Download full risk register as CSV (pandas-powered)">
                                 ⬇ Export CSV
                             </a>
                         </div>
@@ -136,8 +138,10 @@
             <div class="col-12">
                 <div class="card bg-dark border-secondary">
                     <div class="card-header d-flex justify-content-between align-items-center">
-                        <h6 class="mb-0">📊 Analytics <small class="text-muted ms-2" style="font-size:0.7rem;">powered by Plotly + Pandas</small></h6>
-                        <button class="btn btn-sm btn-link text-muted" onclick="toggleCharts()" id="btn-toggle-charts">Hide</button>
+                        <h6 class="mb-0">📊 Analytics <small class="text-muted ms-2" style="font-size:0.7rem;">powered
+                                by Plotly + Pandas</small></h6>
+                        <button class="btn btn-sm btn-link text-muted" onclick="toggleCharts()"
+                            id="btn-toggle-charts">Hide</button>
                     </div>
                     <div class="card-body" id="charts-body">
                         <div class="row g-3">
