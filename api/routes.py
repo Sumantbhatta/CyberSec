@@ -1,6 +1,10 @@
 """Flask REST API endpoints."""
 
-from flask import Blueprint, jsonify, request
+import io
+from datetime import datetime
+
+import pandas as pd
+from flask import Blueprint, jsonify, request, Response
 
 api_bp = Blueprint("api", __name__, url_prefix="/api")
 
@@ -292,7 +296,7 @@ def sample_risk_report():
 
     return jsonify({
         "report_title": "Identity Sprawl Risk Assessment Report",
-        "generated_at": __import__("datetime").datetime.now().isoformat(),
+        "generated_at": datetime.now().isoformat(),
         "executive_summary": {
             "total_identities_assessed": len(identities),
             "total_findings": len(findings),
@@ -316,6 +320,158 @@ def sample_risk_report():
             "Implement automated offboarding workflow across all platforms",
         ],
     })
+
+
+# ── Pandas-powered endpoints ────────────────────────────────────────────────
+
+
+def _build_findings_df():
+    """Convert all findings into a pandas DataFrame for analytics."""
+    rows = []
+    for f in _state["findings"]:
+        rows.append({
+            "id": f.id,
+            "identity_id": f.identity_id,
+            "category": f.category.value,
+            "severity": f.severity.value,
+            "score": f.score,
+            "platform": f.platform,
+            "title": f.title,
+            "detected_at": f.detected_at.isoformat() if f.detected_at else None,
+        })
+    return pd.DataFrame(rows)
+
+
+def _build_identities_df():
+    """Convert all unified identities into a pandas DataFrame."""
+    rows = []
+    for i in _state["unified_identities"]:
+        rows.append({
+            "id": i.id,
+            "display_name": i.display_name,
+            "email": i.primary_email,
+            "department": i.department,
+            "title": i.title,
+            "risk_score": i.risk_score,
+            "behavioral_deviation": getattr(i, 'behavioral_deviation', 0.0),
+            "finding_count": len(i.findings),
+            "platforms": len(i.platform_accounts),
+            "is_service_account": i.is_service_account,
+            "has_justification": i.has_justification,
+        })
+    return pd.DataFrame(rows)
+
+
+@api_bp.route("/stats/pandas")
+def pandas_stats():
+    """Pandas-powered analytics: department risk, severity distribution, dormancy stats."""
+    if not _state["findings"]:
+        return jsonify({"error": "No data"}), 404
+
+    findings_df = _build_findings_df()
+    identities_df = _build_identities_df()
+
+    # --- Severity distribution ---
+    severity_dist = findings_df["severity"].value_counts().to_dict()
+
+    # --- Category distribution ---
+    category_dist = findings_df["category"].value_counts().to_dict()
+
+    # --- Score statistics ---
+    score_stats = findings_df["score"].describe().round(2).to_dict()
+
+    # --- Department risk analysis ---
+    dept_risk = (
+        identities_df.groupby("department")["risk_score"]
+        .agg(["mean", "max", "count"])
+        .round(2)
+        .rename(columns={"mean": "avg_risk", "max": "max_risk", "count": "identity_count"})
+        .sort_values("avg_risk", ascending=False)
+        .to_dict(orient="index")
+    )
+
+    # --- Platform finding counts ---
+    platform_findings = (
+        findings_df["platform"]
+        .str.split(", ").explode()
+        .str.strip()
+        .value_counts()
+        .to_dict()
+    )
+
+    # --- High-risk identity summary ---
+    high_risk_df = identities_df[identities_df["risk_score"] >= 60].copy()
+    high_risk_summary = {
+        "count": int(len(high_risk_df)),
+        "avg_score": round(float(high_risk_df["risk_score"].mean()), 1) if len(high_risk_df) else 0,
+        "avg_findings": round(float(high_risk_df["finding_count"].mean()), 1) if len(high_risk_df) else 0,
+        "departments": high_risk_df["department"].value_counts().to_dict(),
+    }
+
+    # --- Risk score percentiles ---
+    percentiles = {
+        "p50": round(float(identities_df["risk_score"].quantile(0.50)), 1),
+        "p75": round(float(identities_df["risk_score"].quantile(0.75)), 1),
+        "p90": round(float(identities_df["risk_score"].quantile(0.90)), 1),
+        "p95": round(float(identities_df["risk_score"].quantile(0.95)), 1),
+    }
+
+    return jsonify({
+        "powered_by": f"pandas {pd.__version__}",
+        "total_findings": len(findings_df),
+        "total_identities": len(identities_df),
+        "severity_distribution": severity_dist,
+        "category_distribution": category_dist,
+        "score_statistics": score_stats,
+        "department_risk": dept_risk,
+        "platform_findings": platform_findings,
+        "high_risk_summary": high_risk_summary,
+        "risk_score_percentiles": percentiles,
+    })
+
+
+@api_bp.route("/export/csv")
+def export_csv():
+    """Export full risk register as a downloadable CSV file (pandas-powered)."""
+    findings_df = _build_findings_df()
+
+    if findings_df.empty:
+        return jsonify({"error": "No findings to export"}), 404
+
+    # Enrich with identity info
+    identity_map = {i.id: i for i in _state["unified_identities"]}
+    findings_df["identity_name"] = findings_df["identity_id"].map(
+        lambda uid: identity_map[uid].display_name if uid in identity_map else ""
+    )
+    findings_df["identity_email"] = findings_df["identity_id"].map(
+        lambda uid: identity_map[uid].primary_email if uid in identity_map else ""
+    )
+    findings_df["department"] = findings_df["identity_id"].map(
+        lambda uid: identity_map[uid].department if uid in identity_map else ""
+    )
+
+    # Reorder columns for readability
+    columns = [
+        "score", "severity", "category", "title",
+        "identity_name", "identity_email", "department",
+        "platform", "detected_at", "id", "identity_id",
+    ]
+    export_df = findings_df[columns].sort_values("score", ascending=False)
+
+    # Stream as CSV
+    output = io.StringIO()
+    export_df.to_csv(output, index=False)
+    output.seek(0)
+
+    filename = f"identity_sprawl_risk_register_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+    return Response(
+        output.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+# ── Helpers ─────────────────────────────────────────────────────────────────
 
 
 def _find_identity(identity_id):

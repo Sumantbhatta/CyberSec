@@ -168,6 +168,7 @@ class UnifiedIdentity:
     findings: list = field(default_factory=list)
     is_service_account: bool = False
     has_justification: bool = False
+    behavioral_deviation: float = 0.0
 
     def to_dict(self):
         return {
@@ -181,6 +182,7 @@ class UnifiedIdentity:
                 k: v.to_dict() for k, v in self.platform_accounts.items()
             },
             "risk_score": self.risk_score,
+            "behavioral_deviation": self.behavioral_deviation,
             "findings": [f.to_dict() if hasattr(f, "to_dict") else f for f in self.findings],
             "is_service_account": self.is_service_account,
             "has_justification": self.has_justification,

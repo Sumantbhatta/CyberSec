@@ -16,6 +16,7 @@ def detect_risks(unified_identities, people, audit_events=None):
     findings = []
     people_emails = {p["email"] for p in people if not p["terminated"]}
     terminated_emails = {p["email"] for p in people if p["terminated"]}
+    audit_events = audit_events or []
 
     for identity in unified_identities:
         findings.extend(_detect_orphaned(identity, people_emails))
@@ -26,6 +27,14 @@ def detect_risks(unified_identities, people, audit_events=None):
         findings.extend(_detect_excessive_permissions(identity))
         findings.extend(_detect_token_abuse(identity))
         findings.extend(_detect_unused_permissions(identity))
+
+    # SSO cascade rule needs audit events and all account IDs
+    account_id_to_identity = {}
+    for identity in unified_identities:
+        for acc in identity.platform_accounts.values():
+            account_id_to_identity[acc.id] = identity
+
+    findings.extend(_detect_sso_cascade(audit_events, account_id_to_identity))
 
     # Attach MITRE references to all findings
     for finding in findings:
@@ -320,5 +329,80 @@ def _detect_unused_permissions(identity):
                     "department": account.department,
                 },
             ))
+
+    return findings
+
+
+def _detect_sso_cascade(audit_events, account_id_to_identity):
+    """Rule 9: SSO cascade login — same identity on 3+ platforms within 15 minutes.
+
+    This pattern indicates credential compromise or automated lateral movement
+    via stolen SSO tokens. Mapped to MITRE T1078 / T1550.
+    """
+    from collections import defaultdict
+
+    SSO_WINDOW_MINUTES = 15
+    MIN_PLATFORMS = 3
+
+    findings = []
+
+    # Group login events by identity_id
+    login_events = [
+        e for e in audit_events
+        if e.event_type.value in ("login_success", "sso_cascade_login")
+    ]
+
+    events_by_identity = defaultdict(list)
+    for event in login_events:
+        if event.identity_id in account_id_to_identity:
+            events_by_identity[event.identity_id].append(event)
+
+    already_flagged = set()
+
+    for account_id, events in events_by_identity.items():
+        if account_id in already_flagged:
+            continue
+
+        # Sort by timestamp
+        events_sorted = sorted(events, key=lambda e: e.timestamp)
+
+        # Sliding window: look for 3+ different platforms within 15 min
+        for i, base_event in enumerate(events_sorted):
+            window_end = base_event.timestamp + timedelta(minutes=SSO_WINDOW_MINUTES)
+            window_events = [e for e in events_sorted[i:] if e.timestamp <= window_end]
+            platforms_in_window = set(e.platform.value for e in window_events)
+
+            if len(platforms_in_window) >= MIN_PLATFORMS:
+                identity = account_id_to_identity.get(account_id)
+                if not identity:
+                    continue
+
+                # Check for anomalous flag or suspicious source IP
+                is_anomalous = any(e.is_anomalous for e in window_events)
+                source_ips = list(set(e.source_ip for e in window_events))
+
+                findings.append(RiskFinding(
+                    identity_id=identity.id,
+                    category=RiskCategory.PRIVILEGE_SPIKE,
+                    severity=Severity.CRITICAL if is_anomalous else Severity.HIGH,
+                    title=f"SSO cascade: {identity.display_name or account_id[:8]} logged into {len(platforms_in_window)} platforms in {SSO_WINDOW_MINUTES}min",
+                    description=f"Identity logged into {', '.join(sorted(platforms_in_window))} within a {SSO_WINDOW_MINUTES}-minute window. "
+                                f"This rapid cross-platform login pattern may indicate credential compromise or stolen SSO token reuse.",
+                    platform=", ".join(sorted(platforms_in_window)),
+                    evidence={
+                        "platforms": sorted(platforms_in_window),
+                        "login_count": len(window_events),
+                        "window_minutes": SSO_WINDOW_MINUTES,
+                        "source_ips": source_ips[:5],
+                        "is_anomalous": is_anomalous,
+                        "first_login": base_event.timestamp.isoformat(),
+                        "is_admin": any(
+                            acc.is_admin
+                            for acc in identity.platform_accounts.values()
+                        ),
+                    },
+                ))
+                already_flagged.add(account_id)
+                break
 
     return findings

@@ -31,7 +31,7 @@ def cluster_incidents(findings, unified_identities):
                 affected_identities=[identity_id],
                 findings=id_findings,
                 severity=_max_severity(id_findings),
-                aggregate_score=sum(f.score for f in id_findings),
+                aggregate_score=_normalized_score(id_findings),
             ))
 
     # Create systemic incidents for widespread category issues
@@ -44,7 +44,7 @@ def cluster_incidents(findings, unified_identities):
                 affected_identities=affected,
                 findings=cat_findings,
                 severity=_max_severity(cat_findings),
-                aggregate_score=sum(f.score for f in cat_findings),
+                aggregate_score=_normalized_score(cat_findings),
             ))
 
     # Sort by aggregate score descending
@@ -60,6 +60,22 @@ def _max_severity(findings):
     return Severity.LOW
 
 
+def _normalized_score(findings):
+    """Compute a 0–100 aggregate score for a group of findings.
+
+    Uses the same diminishing-returns model as score_identity:
+    max score + 10% of each additional finding, capped at 100.
+    This keeps incident scores comparable to individual finding scores.
+    """
+    if not findings:
+        return 0.0
+    scores = sorted([f.score for f in findings], reverse=True)
+    aggregate = scores[0]
+    for s in scores[1:]:
+        aggregate += s * 0.10
+    return round(min(aggregate, 100), 1)
+
+
 def _category_title(category):
     titles = {
         "OrphanedAccount": "Orphaned Accounts",
@@ -68,5 +84,7 @@ def _category_title(category):
         "CrossPlatformMismatch": "Cross-Platform Mismatches",
         "OffboardingFailure": "Offboarding Failures",
         "ExcessivePermissions": "Excessive Permissions",
+        "TokenAbuse": "Token & Credential Abuse",
+        "UnusedPermissions": "Unused Permissions",
     }
     return titles.get(category, category)

@@ -71,6 +71,24 @@ def score_identity(identity):
     return identity
 
 
+def apply_behavioral_score(identity, audit_events):
+    """Blend behavioral deviation score into identity risk score.
+
+    Adds up to +15 points based on anomalous login patterns and
+    failure rates observed in the audit event stream. Called after
+    score_identity() so it amplifies — not replaces — the base score.
+    """
+    deviation = compute_behavioral_baseline(identity, audit_events)
+    if deviation > 0:
+        # Blend: up to 15% boost from behavioral signals
+        boost = deviation * 0.15
+        identity.risk_score = min(round(identity.risk_score + boost, 1), 100)
+        identity.behavioral_deviation = round(deviation, 1)
+    else:
+        identity.behavioral_deviation = 0.0
+    return identity
+
+
 def compute_behavioral_baseline(identity, audit_events):
     """Compute behavioral deviation score from audit event baseline."""
     if not audit_events:

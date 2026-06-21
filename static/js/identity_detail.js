@@ -157,7 +157,6 @@ function formatRelativeDate(isoString) {
 }
 
 function escapeHtmlDetail(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
+    // Shared with risk_table.js — delegates to the common escapeHtml utility
+    return escapeHtml(text);
 }

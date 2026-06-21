@@ -323,14 +323,18 @@ def _assign_access_tokens(accounts, platform):
                 created = datetime.now() - timedelta(days=random.randint(30, 400))
                 expires = created + timedelta(days=random.choice([90, 180, 365]))
                 is_expired = expires < datetime.now()
-                last_used = datetime.now() - timedelta(days=random.randint(0, 60)) if not is_expired else None
+                # For expired tokens, simulate abuse: 40% chance they were used after expiry
+                if is_expired:
+                    last_used = datetime.now() - timedelta(days=random.randint(0, 14))
+                else:
+                    last_used = datetime.now() - timedelta(days=random.randint(0, 60))
 
                 tokens.append({
                     "token_id": str(fake.uuid4())[:12],
                     "scope": random.choice(["read", "read-write", "admin"]),
                     "created_at": created.isoformat(),
                     "expires_at": expires.isoformat(),
-                    "last_used": last_used.isoformat() if last_used else None,
+                    "last_used": last_used.isoformat(),
                     "is_expired": is_expired,
                 })
             account.access_tokens = tokens

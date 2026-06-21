@@ -7,7 +7,7 @@ from data.seed_scenarios import seed_scenarios
 from engine.identity_resolver import resolve_identities
 from engine.privilege_graph import build_privilege_graph
 from engine.risk_detector import detect_risks
-from engine.risk_scorer import score_finding, score_identity, compute_behavioral_baseline
+from engine.risk_scorer import score_finding, score_identity, compute_behavioral_baseline, apply_behavioral_score
 from engine.incident_cluster import cluster_incidents
 from engine.remediation import generate_remediation
 from api.routes import api_bp, init_state
@@ -51,6 +51,7 @@ def create_app():
     for identity in unified_identities:
         identity.findings = finding_map.get(identity.id, [])
         score_identity(identity)
+        apply_behavioral_score(identity, audit_events)
 
     # Update graph node risk scores
     for identity in unified_identities:
